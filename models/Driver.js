@@ -16,7 +16,7 @@ const driverSchema = new mongoose.Schema({
     totalDeliveries: { type: Number, default: 0 },
     totalEarnings: { type: Number, default: 0.0 },
     profileImage: {type:String, default: "https://d326fntlu7tb1e.cloudfront.net/uploads/cf503f8d-3318-4306-9e2c-a53efb7d585b-avatar.png"},
-    isActive: { type: Boolean, default: false } // To track if the driver is currently active on the platform
+    isActive: { type: Boolean, default: false }
 });
 
 module.exports = mongoose.model('Driver', driverSchema);

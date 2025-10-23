@@ -8,6 +8,7 @@ const sendNotification = require('../utils/sendNotification');
 const Restaurant = require("../models/Restaurant");
 const User = require("../models/User");
 const sendNotificationToTopic = require('../utils/sendToTopic')
+const { evaluateStatusChange } = require('../utils/orderStatus')
 
 
 module.exports = {
@@ -162,67 +163,52 @@ module.exports = {
         }
     },
 
-    // updateOrderStatus: async (req, res) => {
-    //     const orderId = req.params.id;
-    //     const { orderStatus } = req.body;
-
-    //     //firebase here we including {{orderid: id, status}}
-
-    //     try {
-    //         const updatedOrder = await Order.findByIdAndUpdate(orderId, { orderStatus }, { new: true });
-    //         if (updatedOrder) {
-    //             res.status(200).json({ status: true, message: 'Order status updated successfully', data: updatedOrder });
-    //         } else {
-    //             res.status(404).json({ status: false, message: 'Order not found' });
-    //         }
-    //     } catch (error) {
-    //         res.status(500).json(error);
-    //     }
-    // },
-
     updateOrderStatus: async (req, res) => {
     const orderId = req.params.id;
-    const { orderStatus } = req.body;
+    const requested = req.body.orderStatus;
     const userId = req.user.id;
-    const userType = req.user.userType; 
+    const userType = req.user.userType; // 'Customer' | 'Restaurant Owner'
 
     try {
         const order = await Order.findById(orderId);
         if (!order) {
-            return res.status(404).json({ status: false, message: 'Order not found' });
+        return res.status(404).json({ status: false, message: 'Order not found' });
         }
 
-        // Check if user is the customer or the restaurant owner for this order
-        const isCustomer = order.userId.toString() === userId && userType === 'Customer';
-        // const isRestaurantOwner = order.restaurantId.toString() === userId && userType === 'Restaurant Owner';
+        // Verify actor identity (customer must own the order)
+        const isCustomer = String(order.userId) === String(userId) && userType === 'Customer';
         const isRestaurantOwner = userType === 'Restaurant Owner';
-
-        // Allowed transitions for each role
-        const allowedTransitions = {
-            Customer: ["Placed", "Canceled", "Received"],
-            RestaurantOwner: ["Processing", "In Route", "Delivered", "Canceled"]
-        };
-
-        // Validate requested status
-        if (isCustomer && !allowedTransitions.Customer.includes(orderStatus)) {
-            return res.status(403).json({ status: false, message: 'Customers cannot set this status.' });
-        }
-        if (isRestaurantOwner && !allowedTransitions.RestaurantOwner.includes(orderStatus)) {
-            return res.status(403).json({ status: false, message: 'Restaurant owners cannot set this status.' });
-        }
         if (!isCustomer && !isRestaurantOwner) {
-            return res.status(403).json({ status: false, message: 'You are not allowed to update this order.' });
+        return res.status(403).json({ status: false, message: 'You are not allowed to update this order.' });
         }
 
-        // Update status
-        order.orderStatus = orderStatus;
+        const decision = evaluateStatusChange({
+        current: order.orderStatus,
+        requested,
+        role: isCustomer ? 'Customer' : 'Restaurant Owner',
+        });
+
+        if (!decision.ok) {
+        return res.status(decision.http).json({ status: false, message: decision.message });
+        }
+
+        // Optional: record customer acknowledgement when "Received"
+        if (requested && String(requested).toLowerCase().includes('received')) {
+        // e.g., order.customerReceivedAt = new Date();
+        // Not changing orderStatus since schema has no "Received"
+        }
+
+        if (!decision.persistChange) {
+        return res.status(200).json({ status: true, message: decision.message, data: order });
+        }
+
+        order.orderStatus = decision.next;
         await order.save();
-
-        res.status(200).json({ status: true, message: 'Order status updated successfully', data: order });
-        } catch (error) {
-            res.status(500).json(error);
-        }
-    },
+        return res.status(200).json({ status: true, message: 'Order status updated successfully', data: order });
+    } catch (error) {
+        return res.status(500).json({ status: false, message: error.message });
+    }
+},
 
 
     updatePaymentStatus: async (req, res) => {
@@ -281,15 +267,15 @@ module.exports = {
             }).select('userId deliveryAddress orderItems deliveryFee restaurantId restaurantCoords recipientCoords orderStatus')
                 .populate({
                     path: 'userId',
-                    select: 'phone profile' // Replace with actual field names for suid
+                    select: 'phone profile'
                 })
                 .populate({
                     path: 'restaurantId',
-                    select: 'title coords imageUrl logoUrl time' // Replace with actual field names for courier
+                    select: 'title coords imageUrl logoUrl time'
                 })
                 .populate({
                     path: 'orderItems.foodId',
-                    select: 'title imageUrl time' // Replace with actual field names for courier
+                    select: 'title imageUrl time'
                 })
 
 
@@ -322,17 +308,17 @@ module.exports = {
             }).select('userId deliveryAddress orderItems deliveryFee restaurantId orderStatus restaurantCoords recipientCoords')
                 .populate({
                     path: 'userId',
-                    select: 'phone profile' // Replace with actual field names for suid
+                    select: 'phone profile' 
                 }).populate({
                     path: 'restaurantId',
-                    select: 'title imageUrl logoUrl time' // Replace with actual field names for courier
+                    select: 'title imageUrl logoUrl time' 
                 })
                 .populate({
                     path: 'orderItems.foodId',
-                    select: 'title imageUrl time' // Replace with actual field names for courier
+                    select: 'title imageUrl time' 
                 }).populate({
                     path: 'deliveryAddress',
-                    select: 'addressLine1' // Replace with actual field names for courier
+                    select: 'addressLine1'
                 })
 
 
@@ -349,19 +335,19 @@ module.exports = {
             }).select('userId deliveryAddress orderItems deliveryFee restaurantId restaurantCoords recipientCoords orderStatus')
                 .populate({
                     path: 'userId',
-                    select: 'phone profile' // Replace with actual field names for suid
+                    select: 'phone profile' 
                 })
                 .populate({
                     path: 'restaurantId',
-                    select: 'title coords imageUrl logoUrl time' // Replace with actual field names for courier
+                    select: 'title coords imageUrl logoUrl time'
                 })
                 .populate({
                     path: 'orderItems.foodId',
-                    select: 'title imageUrl time' // Replace with actual field names for courier
+                    select: 'title imageUrl time' 
                 })
                 .populate({
                     path: 'deliveryAddress',
-                    select: 'addressLine1 city district' // Replace with actual field names for courier
+                    select: 'addressLine1 city district'
                 })
 
 
@@ -390,19 +376,19 @@ module.exports = {
             }).select('userId deliveryAddress orderItems deliveryFee restaurantId restaurantCoords recipientCoords orderStatus')
                 .populate({
                     path: 'userId',
-                    select: 'phone profile' // Replace with actual field names for suid
+                    select: 'phone profile'
                 })
                 .populate({
                     path: 'restaurantId',
-                    select: 'title coords imageUrl logoUrl time' // Replace with actual field names for courier
+                    select: 'title coords imageUrl logoUrl time' 
                 })
                 .populate({
                     path: 'orderItems.foodId',
-                    select: 'title imageUrl time' // Replace with actual field names for courier
+                    select: 'title imageUrl time'
                 })
                 .populate({
                     path: 'deliveryAddress',
-                    select: 'addressLine1' // Replace with actual field names for courier
+                    select: 'addressLine1'
                 })
 
             res.status(200).json(parcels);
@@ -420,19 +406,19 @@ module.exports = {
             const updatedOrder = await Order.findByIdAndUpdate(orderId, { orderStatus: 'Out_for_Delivery', driverId: driver }, { new: true }).select('userId deliveryAddress orderItems deliveryFee restaurantId restaurantCoords recipientCoords orderStatus')
                 .populate({
                     path: 'userId',
-                    select: 'phone profile fcm' // Replace with actual field names for suid
+                    select: 'phone profile fcm' 
                 })
                 .populate({
                     path: 'restaurantId',
-                    select: 'title coords imageUrl logoUrl time' // Replace with actual field names for courier
+                    select: 'title coords imageUrl logoUrl time'
                 })
                 .populate({
                     path: 'orderItems.foodId',
-                    select: 'title imageUrl time' // Replace with actual field names for courier
+                    select: 'title imageUrl time'
                 })
                 .populate({
                     path: 'deliveryAddress',
-                    select: 'addressLine1 city district' // Replace with actual field names for courier
+                    select: 'addressLine1 city district'
                 });
 
             const user = await User.findById(updatedOrder.userId._id, { fcm: 1 })
@@ -468,19 +454,19 @@ module.exports = {
             const updatedOrder = await Order.findByIdAndUpdate(orderId, { orderStatus: 'Delivered' }, { new: true }).select('userId orderTotal deliveryAddress orderItems deliveryFee restaurantId restaurantCoords recipientCoords orderStatus')
                 .populate({
                     path: 'userId',
-                    select: 'phone profile fcm' // Replace with actual field names for suid
+                    select: 'phone profile fcm' 
                 })
                 .populate({
                     path: 'restaurantId',
-                    select: 'title coords imageUrl logoUrl time' // Replace with actual field names for courier
+                    select: 'title coords imageUrl logoUrl time'
                 })
                 .populate({
                     path: 'orderItems.foodId',
-                    select: 'title imageUrl time' // Replace with actual field names for courier
+                    select: 'title imageUrl time' 
                 })
                 .populate({
                     path: 'deliveryAddress',
-                    select: 'addressLine1' // Replace with actual field names for courier
+                    select: 'addressLine1'
                 });
 
 

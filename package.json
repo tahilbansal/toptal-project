@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "nodemon server.js",
-    "debug": "nodemon --inspect server.js"
+    "debug": "nodemon --inspect server.js",
+    "test": "jest",
+    "test-file": "jest tests/unit/utils/generateOtp.test.js",
+    "test-case": "jest tests/unit/controllers/categoryController.test.js -t \"creates category\""
   },
   "keywords": [],
   "author": "",
@@ -21,6 +24,7 @@
     "mongoose": "^7.6.3",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.7",
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "jest": "^29.6.2"
   }
 }

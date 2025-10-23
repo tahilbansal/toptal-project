@@ -1,16 +1,22 @@
 const CryptoJS = require("crypto-js");
 
-const passphrase = process.env.SECRET;
+function passwordEncrypt(plainText, passphrase = process.env.SECRET || '') {
+  return CryptoJS.AES.encrypt(plainText, passphrase).toString();
+}
 
-const passwordEncryptor = (plainText, pass) => {
-  return CryptoJS.AES.encrypt(plainText, pass).toString();
-};
+function passwordDecrypt(cipherText, passphrase = process.env.SECRET || '') {
+  const bytes = CryptoJS.AES.decrypt(cipherText, passphrase);
+  return bytes.toString(CryptoJS.enc.Utf8);
+}
 
-// - Encrypt a new string
-const newPlain = "tahil123";
-const newCipher = passwordEncryptor(newPlain, passphrase);
-console.log("New cipher:", newCipher);
+if (process.env.NODE_ENV !== 'test') {
+  const DEMO_VALUE = 'hello123';
+  const DEMO_SECRET = 'my-secret';
+  const cipher = passwordEncrypt(DEMO_VALUE, DEMO_SECRET);
+  console.log('Encrypted:', cipher);
+  console.log('Decrypted:', passwordDecrypt(cipher, DEMO_SECRET));
+}
 
-// - Verify roundtrip decryption
-const verify = CryptoJS.AES.decrypt(newCipher, passphrase).toString(CryptoJS.enc.Utf8);
-console.log("Roundtrip decrypted:", JSON.stringify(verify));
+module.exports = passwordDecrypt;
+module.exports.passwordDecrypt = passwordDecrypt;
+module.exports.passwordEncrypt = passwordEncrypt;
